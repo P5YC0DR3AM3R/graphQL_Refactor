@@ -1,39 +1,56 @@
-const jwt = require('jsonwebtoken');
+const crypto = require('crypto');
 
-// set token secret and expiration date
-const secret = 'mysecretsshhhhh';
-const expiration = '2h';
+function jwtSecret() {
+  if (!process.env.JWT_SECRET) {
+    require('dotenv').config();
+  }
+  return process.env.JWT_SECRET;
+}
 
-module.exports = {
-  // function for our authenticated routes
-  authMiddleware: function (req, res, next) {
-    // allows token to be sent via  req.query or headers
-    let token = req.query.token || req.headers.authorization;
+const TTL_SECONDS = 2 * 60 * 60;
 
-    // ["Bearer", "<tokenvalue>"]
-    if (req.headers.authorization) {
-      token = token.split(' ').pop().trim();
-    }
+function b64url(value) {
+  const buf = Buffer.isBuffer(value) ? value : Buffer.from(value);
+  return buf.toString('base64url');
+}
 
-    if (!token) {
-      return res.status(400).json({ message: 'You have no token!' });
-    }
+function sign(data, secret) {
+  return crypto.createHmac('sha256', secret).update(data).digest('base64url');
+}
 
-    // verify token and get user data out of it
-    try {
-      const { data } = jwt.verify(token, secret, { maxAge: expiration });
-      req.user = data;
-    } catch {
-      console.log('Invalid token');
-      return res.status(400).json({ message: 'invalid token!' });
-    }
+function signToken({ username, email, _id }) {
+  const secret = jwtSecret();
+  if (!secret) {
+    throw new Error('JWT_SECRET is not set. Copy .env.example to .env');
+  }
+  const header = b64url(JSON.stringify({ alg: 'HS256', typ: 'JWT' }));
+  const exp = Math.floor(Date.now() / 1000) + TTL_SECONDS;
+  const payload = b64url(JSON.stringify({ data: { username, email, _id }, exp }));
+  const body = `${header}.${payload}`;
+  return `${body}.${sign(body, secret)}`;
+}
 
-    // send to next endpoint
-    next();
-  },
-  signToken: function ({ username, email, _id }) {
-    const payload = { username, email, _id };
+function getUser(req) {
+  const secret = jwtSecret();
+  if (!secret) return null;
+  let token = (req.headers && req.headers.authorization) || '';
+  if (token.startsWith('Bearer ')) token = token.slice(7);
+  token = token.trim();
+  const parts = token.split('.');
+  if (parts.length !== 3) return null;
+  const [header, payload, sig] = parts;
+  const expected = sign(`${header}.${payload}`, secret);
+  const a = Buffer.from(sig);
+  const b = Buffer.from(expected);
+  if (a.length !== b.length || !crypto.timingSafeEqual(a, b)) return null;
+  let body;
+  try {
+    body = JSON.parse(Buffer.from(payload, 'base64url').toString());
+  } catch {
+    return null;
+  }
+  if (!body.exp || body.exp < Math.floor(Date.now() / 1000)) return null;
+  return body.data || null;
+}
 
-    return jwt.sign({ data: payload }, secret, { expiresIn: expiration });
-  },
-};
+module.exports = { getUser, signToken };
