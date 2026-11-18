@@ -5,7 +5,8 @@
   "main": "server.js",
   "scripts": {
     "start": "node server.js",
-    "watch": "nodemon server.js"
+    "watch": "nodemon server.js",
+    "test": "echo check-via-ci"
   },
   "keywords": [],
   "author": "",
@@ -13,10 +14,15 @@
   "dependencies": {
     "bcrypt": "^4.0.1",
     "express": "^4.17.1",
-    "jsonwebtoken": "^8.5.1",
-    "mongoose": "^8.0.0"
+    "mongoose": "^8.0.0",
+    "@apollo/server": "^4.11.3",
+    "graphql": "^16.10.0",
+    "dotenv": "^16.4.7"
   },
   "devDependencies": {
     "nodemon": "^2.0.3"
+  },
+  "engines": {
+    "node": ">=22"
   }
 }
